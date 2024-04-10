@@ -21,7 +21,7 @@ TODO:
 Notes on 4DGS that may/may not have been initially provided:
 - OpenCV/COLMAP coordinate system (+x right, +y down, z forward)
 
-#### View camera poses
+#### View training cameras
 The viewer looks like this: (Note that `no data` is replaced with `LPIPS: 0.0XX, MS-SSIM: ...` once training is complete)
 
 ![Camera model](images/view_training.png)
