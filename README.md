@@ -1,3 +1,43 @@
+### Fork of the [4D-GS](https://arxiv.org/abs/2310.08528) model for 4-D view synthesis with real-time view (using [dearpygui](https://github.com/hoffstadt/DearPyGui)) and visual debugging for custom data sets.
+
+Currently and forever "under contruction" as I will likely use this for validating custom datasets used in 4DGS modelling.
+
+Done:
+- Real-time scene viewer
+- Control for Time
+- Display testing metrics (PSNR and SSIM during training and all metrics at the end of training)
+- Toggle to view training view + loop through each view using `>>` button
+- View up-to 10 training camera locations (for visually verifying the correct pose/coordinate system)
+
+
+TODO:
+- [ ] View more than 10 cameras (For static-cameras we should load a single pose rather than all poses in time) (likely solved by solving below first)
+- [ ] Integrate viewing training cameras with scene (so viewing trained scene and training poses simulateneously)
+- [ ] Color the camera model orientations (need to determine how to show colour w.r.t to spherical harmonics)
+- [ ] Need to add inputs for training from custom viewer (to over ride configs)
+- [ ] Orbit control from training camera (When viewing training cam give orbital control so we can see whether a view is over-fitting)
+
+
+Notes on 4DGS that may/may not have been initially provided:
+- OpenCV/COLMAP coordinate system (+x right, +y down, z forward)
+
+#### View camera poses
+The viewer looks like this: (Note that `no data` is replaced with `LPIPS: 0.0XX, MS-SSIM: ...` once training is complete)
+
+![Camera model](images/view_training.png)
+
+#### View camera poses
+Each camera is represented by a gaussian-blob representation, where the right (+X), down (+Y) and back (-Z) axis are shown in the imag below. I also show the x-axis along the top and bottom of each camera model to make it easier to view pose. 
+
+![Camera model](images/camera_model.png)
+
+In the viewing this looks like the following (and will be the default)
+
+![View Camera](images/view_cameras.png)
+
+
+
+
 # 4D Gaussian Splatting for Real-Time Dynamic Scene Rendering
 
 ## CVPR 2024
@@ -13,209 +53,9 @@
 
 ---
 
-![block](assets/teaserfig.jpg)
-Our method converges very quickly and achieves real-time rendering speed.
-
-New Colab demo:[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1wz0D5Y9egAlcxXy8YO9UmpQ9oH51R7OW?usp=sharing) (Thanks [Tasmay-Tibrewal
-](https://github.com/Tasmay-Tibrewal))
-
-Old Colab demo:[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/hustvl/4DGaussians/blob/master/4DGaussians.ipynb) (Thanks [camenduru](https://github.com/camenduru/4DGaussians-colab).)
-
-Light Gaussian implementation: [This link](https://github.com/pablodawson/4DGaussians) (Thanks [pablodawson](https://github.com/pablodawson))
-
-
-## News
-
-2024.03.04: We change the hyperparameters of the Neu3D dataset, corresponding to our paper
-
-2024.02.28: Update SIBR viewer guidance.
-
-2024.02.27: Accepted by CVPR 2024. We delete some logging settings for debugging, the corrected training time is only **8 mins** (20 mins before) in D-NeRF datasets and **30 mins** (1 hour before) in HyperNeRF datasets. The rendering quality is not affected.
-
-## Environmental Setups
-
-Please follow the [3D-GS](https://github.com/graphdeco-inria/gaussian-splatting) to install the relative packages.
-
-```bash
-git clone https://github.com/hustvl/4DGaussians
-cd 4DGaussians
-git submodule update --init --recursive
-conda create -n Gaussians4D python=3.7 
-conda activate Gaussians4D
-
-pip install -r requirements.txt
-pip install -e submodules/depth-diff-gaussian-rasterization
-pip install -e submodules/simple-knn
-```
-
-In our environment, we use pytorch=1.13.1+cu116.
-
-## Data Preparation
-
-**For synthetic scenes:**
-The dataset provided in [D-NeRF](https://github.com/albertpumarola/D-NeRF) is used. You can download the dataset from [dropbox](https://www.dropbox.com/s/0bf6fl0ye2vz3vr/data.zip?dl=0).
-
-**For real dynamic scenes:**
-The dataset provided in [HyperNeRF](https://github.com/google/hypernerf) is used. You can download scenes from [Hypernerf Dataset](https://github.com/google/hypernerf/releases/tag/v0.1) and organize them as [Nerfies](https://github.com/google/nerfies#datasets). Meanwhile, [Plenoptic Dataset](https://github.com/facebookresearch/Neural_3D_Video) could be downloaded from their official websites. To save the memory, you should extract the frames of each video and then organize your dataset as follows.
-
-```
-├── data
-│   | dnerf 
-│     ├── mutant
-│     ├── standup 
-│     ├── ...
-│   | hypernerf
-│     ├── interp
-│     ├── misc
-│     ├── virg
-│   | dynerf
-│     ├── cook_spinach
-│       ├── cam00
-│           ├── images
-│               ├── 0000.png
-│               ├── 0001.png
-│               ├── 0002.png
-│               ├── ...
-│       ├── cam01
-│           ├── images
-│               ├── 0000.png
-│               ├── 0001.png
-│               ├── ...
-│     ├── cut_roasted_beef
-|     ├── ...
-```
-
-## Training
-
-For training synthetic scenes such as `bouncingballs`, run
-
-```
-python train.py -s data/dnerf/bouncingballs --port 6017 --expname "dnerf/bouncingballs" --configs arguments/dnerf/bouncingballs.py 
-```
-
-You can customize your training config through the config files.
-
-Checkpoint
-
-Also, you can training your model with checkpoint.
-
-```python
-python train.py -s data/dnerf/bouncingballs --port 6017 --expname "dnerf/bouncingballs" --configs arguments/dnerf/bouncingballs.py --checkpoint_iterations 200 # change it.
-```
-
-Then load checkpoint with:
-
-```python
-python train.py -s data/dnerf/bouncingballs --port 6017 --expname "dnerf/bouncingballs" --configs arguments/dnerf/bouncingballs.py --start_checkpoint "output/dnerf/bouncingballs/chkpnt_coarse_200.pth"
-# finestage: --start_checkpoint "output/dnerf/bouncingballs/chkpnt_fine_200.pth"
-```
-
-## Rendering
-
-Run the following script to render the images.
-
-```
-python render.py --model_path "output/dnerf/bouncingballs/"  --skip_train --configs arguments/dnerf/bouncingballs.py  &
-```
-
-## Evaluation
-
-You can just run the following script to evaluate the model.
-
-```
-python metrics.py --model_path "output/dnerf/bouncingballs/" 
-```
-
-## Custom Datasets
-
-Install nerfstudio and follow their colmap pipeline.
-
-```
-pip install nerfstudio
-ns-process-data images --data data/your-data --output-dir data/your-ns-data
-cp -r data/your-ns-data/images data/your-ns-data/colmap/images
-python train.py -s data/your-ns-data/colmap --port 6017 --expname "custom" --configs arguments/hypernerf/default.py 
-
-```
-## Viewer
-[Watch me](./docs/viewer_usage.md)
-## Scripts
-
-There are some helpful scripts in , please feel free to use them.
-
-`vis_point.py`:
-get all points clouds at each timestamps.
-
-usage:
-
-```python
-export exp_name="hypernerf"
-python vis_point.py --model_path output/$exp_name/interp/aleks-teapot --configs arguments/$exp_name/default.py 
-```
-
-`weight_visualization.ipynb`:
-
-visualize the weight of Multi-resolution HexPlane module.
-
-`merge_many_4dgs.py`:
-merge your trained 4dgs.
-usage:
-
-```python
-export exp_name="dynerf"
-python merge_many_4dgs.py --model_path output/$exp_name/sear_steak
-```
-
-`colmap.sh`:
-generate point clouds from input data
-
-```bash
-bash colmap.sh data/hypernerf/virg/vrig-chicken hypernerf 
-bash colmap.sh data/dynerf/sear_steak llff
-```
-
-**Blender** format seems doesn't work. Welcome to raise a pull request to fix it.
-
-`downsample_point.py` :downsample generated point clouds by sfm.
-
-```python
-python scripts/downsample_point.py data/dynerf/sear_steak/colmap/dense/workspace/fused.ply data/dynerf/sear_steak/points3D_downsample2.ply
-```
-
-In my paper, I always use `colmap.sh` to generate dense point clouds and downsample it to less than 40000 points.
-
-Here are some codes maybe useful but never adopted in my paper, you can also try it.
-
-## Further works
-
-We sincerely thank the authors and their fantastic works for other applications based on our code.
-
-[MD-Splatting: Learning Metric Deformation from 4D Gaussians in Highly Deformable Scenes](https://md-splatting.github.io/)
-
-[4DGen: Grounded 4D Content Generation with Spatial-temporal Consistency](https://vita-group.github.io/4DGen/)
-
-[DreamGaussian4D: Generative 4D Gaussian Splatting](https://github.com/jiawei-ren/dreamgaussian4d)
-
-[EndoGaussian: Real-time Gaussian Splatting for Dynamic Endoscopic Scene Reconstruction](https://github.com/yifliu3/EndoGaussian)
-
-[EndoGS: Deformable Endoscopic Tissues Reconstruction with Gaussian Splatting](https://github.com/HKU-MedAI/EndoGS)
-
-[Endo-4DGS: Endoscopic Monocular Scene Reconstruction with 4D Gaussian Splatting](https://arxiv.org/abs/2401.16416)
-
-
----
-
-## Contributions
-
-**This project is still under development. Please feel free to raise issues or submit pull requests to contribute to our codebase.**
-
----
-
-Some source code of ours is borrowed from [3DGS](https://github.com/graphdeco-inria/gaussian-splatting), [k-planes](https://github.com/Giodiro/kplanes_nerfstudio),[HexPlane](https://github.com/Caoang327/HexPlane), [TiNeuVox](https://github.com/hustvl/TiNeuVox). We sincerely appreciate the excellent works of these authors.
-
 ## Acknowledgement
 
-We would like to express our sincere gratitude to [@zhouzhenghong-gt](https://github.com/zhouzhenghong-gt/) for his revisions to our code and discussions on the content of our paper.
+Some source code of ours is borrowed from [3DGS](https://github.com/graphdeco-inria/gaussian-splatting), [k-planes](https://github.com/Giodiro/kplanes_nerfstudio), [HexPlane](https://github.com/Caoang327/HexPlane), [TiNeuVox](https://github.com/hustvl/TiNeuVox). We sincerely appreciate the excellent works of these authors.
 
 ## Citation
 

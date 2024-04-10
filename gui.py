@@ -326,7 +326,7 @@ class GaussianCameraModel:
             xyzs.append(T.unsqueeze(0))
             qs.append(q.unsqueeze(0))
 
-        # Line in -Y (Down) Show direction
+        # Line in +Y (Down) Show direction
         T = torch.tensor([+0.1, 0., 0.])
         q = R_to_q(R)
         xyzs.append(T.unsqueeze(0))
