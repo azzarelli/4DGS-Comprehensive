@@ -12,10 +12,10 @@ Done:
 
 TODO:
 - [ ] View more than 10 cameras (For static-cameras we should load a single pose rather than all poses in time) (likely solved by solving below first)
-- [ ] Integrate viewing training cameras with scene (so viewing trained scene and training poses simulateneously)
+- [X] Integrate viewing training cameras with scene (so viewing trained scene and training poses simulateneously)
 - [ ] Color the camera model orientations (need to determine how to show colour w.r.t to spherical harmonics)
 - [ ] Need to add inputs for training from custom viewer (to over ride configs)
-- [ ] Orbit control from training camera (When viewing training cam give orbital control so we can see whether a view is over-fitting)
+- [-] Orbit control from training camera (When viewing training cam give orbital control so we can see whether a view is over-fitting)
 
 
 Notes on 4DGS that may/may not have been initially provided:
