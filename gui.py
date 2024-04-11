@@ -6,7 +6,7 @@ import numpy as np
 import dearpygui.dearpygui as dpg
 from scipy.spatial.transform import Rotation as R
 
-# from scene.cameras import MiniCam
+from scene.cameras import Camera
 
 
 import numpy as np
@@ -80,7 +80,7 @@ def getProjectionMatrix(znear, zfar, fovX, fovY):
 
 
 class MiniCam:
-    def __init__(self, c2w, width, height, fovy, fovx, znear, zfar, time):
+    def __init__(self, c2w, width, height, fovy, fovx, znear, zfar, time, from_training_view=False):
         # c2w (pose) should be in NeRF convention.
 
         self.image_width = width
@@ -89,26 +89,38 @@ class MiniCam:
         self.FoVx = fovx
         self.znear = znear
         self.zfar = zfar
-        self.c2w = c2w
         self.time = time
-        w2c = np.linalg.inv(c2w)
+
         
-        # rectify...
-        w2c[1:3, :3] *= -1
-        w2c[:3, 3] *= -1
+        loaded = False
+        if from_training_view:
+            if type(c2w) == type({'type':'dict'}):
+                self.world_view_transform = c2w['world_view_transform']
 
-        self.world_view_transform = torch.tensor(w2c).transpose(0, 1).cuda().float()
-        self.projection_matrix = (
-            getProjectionMatrix(
-                znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy
+                self.c2w = torch.linalg.inv(self.world_view_transform.cuda().transpose(0,1))
+                self.projection_matrix = c2w['projection_matrix']
+                self.full_proj_transform = c2w['full_proj_transform']
+
+                loaded = True
+        
+        if not loaded:
+            self.c2w = c2w
+            w2c = np.linalg.inv(c2w)
+            # rectify...
+            w2c[1:3, :3] *= -1
+            w2c[:3, 3] *= -1
+
+            self.world_view_transform = torch.tensor(w2c).transpose(0, 1).cuda().float()
+            self.projection_matrix = (
+                getProjectionMatrix(
+                    znear=self.znear, zfar=self.zfar, fovX=self.FoVx, fovY=self.FoVy
+                )
+                .transpose(0, 1)
+                .cuda().float()
             )
-            .transpose(0, 1)
-            .cuda().float()
-        )
-        self.full_proj_transform = self.world_view_transform @ self.projection_matrix
+            self.full_proj_transform = self.world_view_transform @ self.projection_matrix
 
-
-        self.camera_center = -torch.tensor(c2w[:3, 3]).cuda()
+        self.camera_center = -torch.tensor(self.c2w[:3, 3]).cuda()
 
     def reset_extrinsic(self, R, T):
         self.world_view_transform = torch.tensor(getWorld2View2(R, T)).transpose(0, 1).cuda()
@@ -280,6 +292,9 @@ class GaussianCameraModel:
         self.qs = torch.cat(qs, dim=0).cuda()
         self.xyzs = torch.cat(xyzs, dim=0).cuda()
 
+        self.xyzs.requires_grad = True
+        self.qs.requires_grad = True
+
     def get_cam_model(self, cam, W, H):
         w = float(W/2.)
         h = float(H/2.)
@@ -347,9 +362,19 @@ class GaussianCameraModel:
         self.get_cam_model(cam, W, H)
 
         self.get_camera_stuff(cam_list)
+
+        cam_centers = []
+        cam_hash = []
+        for i, cam in enumerate(cam_list):
+            T = cam.camera_center
+            if str(T) not in cam_hash:
+                cam_centers.append(T)
+                cam_hash.append(str(T))
+        tensor_stack = torch.stack(cam_centers)
+        self.cam_center = torch.mean(tensor_stack, dim=0)
         
         # Blob scale NOT camera scale
-        self.scale = torch.tensor([0.03, 0.03, 0.03]).cuda()
+        self.scale = torch.tensor([0.001, 0.001, 0.001]).cuda()
 
 class GUI:
     def train_coarse(self):
@@ -489,6 +514,7 @@ class GUI:
         
         self.fovy = self.scene.getTestCameras().dataset[0].FovY
         self.cam = OrbitCamera(self.W, self.H, r=60., fovy=self.fovy)
+        self.store_orbit = self.cam
         self.mode = "rgb"
         self.buffer_image = np.ones((self.W, self.H, 3), dtype=np.float32)
         self.time = 0.
@@ -500,6 +526,8 @@ class GUI:
         self.ema_loss_for_log = 0.0
         self.ema_psnr_for_log = 0.0
 
+        self.show_scene = True
+        self.show_cameras = True
         self.train_cam_buffer = None
         self.view_training_cameras = False
         self.view_training_camera_index = 0
@@ -600,17 +628,34 @@ class GUI:
                     self.view_training_cameras = not self.view_training_cameras
                     self.train_cam_buffer = self.train_cams[self.view_training_camera_index]
 
+                    # Store non-training orbital camers
+                    if self.view_training_cameras:
+                        self.store_orbit = self.cam
+                    else: # Load stored training_cam
+                        self.cam = self.store_orbit
+
                 # Go to next training camera
                 def callback_toggle_train_cam_idx(sender):
                     self.view_training_camera_index = (self.view_training_camera_index + 1) % len(self.train_cams)
                     self.train_cam_buffer = self.train_cams[self.view_training_camera_index]
                     dpg.set_value("_log_train_cam_idx", f"Cam Idx: {self.view_training_camera_index}")
 
+                def callback_toggle_show_scene(sender):
+                    self.show_scene = not self.show_scene
+
+                def callback_toggle_show_cameras(sender):
+                    self.show_cameras = not self.show_cameras
+
 
                 with dpg.group(horizontal=True):
-                    dpg.add_button(label="Toggle to View Training Cams", callback=callback_toggle_train_cam)
+                    dpg.add_button(label="View Training Cameras", callback=callback_toggle_train_cam)
                     dpg.add_button(label=">>", callback=callback_toggle_train_cam_idx)
                     dpg.add_text("Cam Idx: ", tag="_log_train_cam_idx")
+                
+                with dpg.group(horizontal=True):
+                    dpg.add_button(label="Show/Hide Scene", callback=callback_toggle_show_scene)
+                    dpg.add_button(label="Show/Hide Cameras", callback=callback_toggle_show_cameras)
+
 
 
         
@@ -627,8 +672,13 @@ class GUI:
 
             dx = app_data[1]
             dy = app_data[2]
-
-            self.cam.orbit(dx, dy)
+            
+            if self.view_training_cameras:
+                pass
+            else:
+                
+                self.cam.orbit(dx, dy)
+                
             self.need_update = True
 
         def callback_camera_wheel_scale(sender, app_data):
@@ -636,9 +686,25 @@ class GUI:
                 return
 
             delta = app_data
+            if self.view_training_cameras:
+                center = self.training_cams_pc.cam_center
+                T = torch.from_numpy(self.train_cam_buffer.T)
 
-            self.cam.scale(delta)
-            self.need_update = True
+                dir = T - center
+
+                # print((1.0 ** (-delta)))
+                # radius = (1.01 ** (-delta))*radius
+                T = (center + (1.1 ** (-delta))*dir).numpy()
+
+                self.train_cam_buffer.world_view_transform = torch.tensor(getWorld2View2(self.train_cam_buffer.R, T, self.train_cam_buffer.trans, self.train_cam_buffer.scale)).transpose(0, 1)
+                self.train_cam_buffer.full_proj_transform = (self.train_cam_buffer.world_view_transform.unsqueeze(0).bmm(self.train_cam_buffer.projection_matrix.unsqueeze(0))).squeeze(0)
+                self.train_cam_buffer.T = T
+                self.train_cam_buffer.camera_center = self.train_cam_buffer.world_view_transform.inverse()[3, :3]
+            else:
+            
+                self.cam.scale(delta)
+
+                self.need_update = True
 
         def callback_camera_drag_pan(sender, app_data):
             if not dpg.is_item_focused("_primary_window"):
@@ -647,7 +713,10 @@ class GUI:
             dx = app_data[1]
             dy = app_data[2]
 
-            self.cam.pan(dx, dy)
+            if self.view_training_cameras:
+                pass
+            else:
+                self.cam.pan(dx, dy)
             self.need_update = True
                 
         with dpg.handler_registry():
@@ -730,12 +799,28 @@ class GUI:
                                        cams_pc = {
                                            "xyzs": self.training_cams_pc.xyzs,
                                            "qs":self.training_cams_pc.qs,
-                                           "scale":self.training_cams_pc.scale
+                                           "scale":self.training_cams_pc.scale,
+                                           "show_scene":self.show_scene,
+                                           "show_cameras":self.show_cameras
                                        }
                                        )['render']
         else:
-            camera = self.train_cam_buffer
-            camera.time = self.time
+            camera = MiniCam(
+                {'world_view_transform':self.train_cam_buffer.world_view_transform, 
+                 'projection_matrix':self.train_cam_buffer.projection_matrix,
+                 'full_proj_transform':self.train_cam_buffer.full_proj_transform},
+                self.W,
+                self.H,
+                self.train_cam_buffer.FoVx,
+                self.train_cam_buffer.FoVy,
+                self.train_cam_buffer.znear,
+                self.train_cam_buffer.zfar, 
+                time=self.time,
+                from_training_view=True
+            )
+            
+            # camera = self.train_cam_buffer
+            # camera.time = self.time
             buffer_image = render(camera, 
                                        self.gaussians, 
                                        self.pipe, 

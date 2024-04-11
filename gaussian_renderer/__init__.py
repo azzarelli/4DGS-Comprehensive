@@ -222,28 +222,40 @@ def render_no_train(viewpoint_camera, pc : GaussianModel, pipe, bg_color : torch
     # TODO: add shs functionality
     # shs_additional = torch.zeros_like(xyzs).to(xyzs.device).unsqueeze(1).repeat(1, 16, 1)
     if cams_pc != None:
-        xyzs = cams_pc['xyzs'].to(means3D_final.device)
-        qs = cams_pc['qs'].to(means3D_final.device)
-        shs_additional = torch.zeros_like(xyzs).to(xyzs.device).unsqueeze(1).repeat(1, shs_final.shape[1], 1)
-        ops = torch.ones_like(xyzs[:, 0]).to(opacity.device).unsqueeze(-1)
-        scaling = torch.ones_like(xyzs).to(opacity.device)
+        if cams_pc['show_cameras'] == True:
+            # Construct camera model data
+            xyzs = cams_pc['xyzs'].to(means3D_final.device) +0.
+            rotations_final_ = cams_pc['qs'].to(means3D_final.device) +0.
+            
+            shs_final_ = torch.zeros_like(xyzs, requires_grad=True).to(xyzs.device).unsqueeze(1).repeat(1, shs_final.shape[1], 1) +0.
+            
+            opacity_ = torch.ones_like(xyzs[:, 0], requires_grad=True).to(opacity.device).unsqueeze(-1) +0.
+            
+            scaling = torch.zeros_like(xyzs, requires_grad=True).to(opacity.device) +0.
+            scaling[:, 0] = scaling[:, 0] + cams_pc['scale'][0]
+            scaling[:, 1] = scaling[:, 1] + cams_pc['scale'][1]
+            scaling[:, 2] = scaling[:, 2] + cams_pc['scale'][2]
 
-        # print(ops.shape, scaling.shape, shs_additional.shape, qs.shape, xyzs.shape)
-        numpts = xyzs.shape[0]
+            scales_final_ = scaling
 
-        # Update GS values
-        # TODO: append to tensors rather than replace
-        means3D_final = (0.*means3D_final[:numpts]) + xyzs
-        means2D = means2D[:xyzs.shape[0], :] # Just a set of 0s
-        shs_final = (0.*shs_final[:numpts]) + shs_additional
-        opacity = (0.*opacity[:numpts]) + ops
-        scales_final = (0.*scales_final[:numpts]) 
-
-        scales_final[:, 0] = scales_final[:, 0] + cams_pc['scale'][0]
-        scales_final[:, 1] = scales_final[:, 1] + cams_pc['scale'][1]
-        scales_final[:, 2] = scales_final[:, 2] + cams_pc['scale'][2]
-
-        rotations_final = (0.*rotations_final[:numpts]) + cams_pc['qs']
+            means2D_ = torch.zeros_like(xyzs, dtype=xyzs.dtype, requires_grad=True, device="cuda") + 0
+            means3D_final_ = xyzs
+            
+            # To display scene and cameras at the same time
+            if cams_pc['show_scene'] == True:
+                means2D = torch.cat([means2D, means2D_], dim=0)
+                means3D_final = torch.cat([means3D_final, means3D_final_], dim=0)
+                scales_final = torch.cat([scales_final, scales_final_], dim=0)
+                opacity = torch.cat([opacity, opacity_], dim=0)
+                shs_final = torch.cat([shs_final, shs_final_], dim=0)
+                rotations_final = torch.cat([rotations_final, rotations_final_], dim=0)
+            else: # Otherwise show cameras alone
+                means2D = means2D_
+                means3D_final = means3D_final_
+                scales_final = scales_final_
+                opacity = opacity_
+                shs_final = shs_final_
+                rotations_final = rotations_final_
         
     
     # Rasterize visible Gaussians to image, obtain their radii (on screen). 
