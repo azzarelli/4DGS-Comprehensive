@@ -23,7 +23,7 @@ class Camera(nn.Module):
         super(Camera, self).__init__()
 
         self.uid = uid
-        self.colmap_id = colmap_id
+        self.colmap_id = colmap_id 
         self.R = R
         self.T = T
         self.FoVx = FoVx

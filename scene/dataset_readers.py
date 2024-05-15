@@ -232,10 +232,10 @@ def generateCamerasFromTransforms(path, template_transformsfile, extension, maxt
         except:
             fovx = focal2fov(template_json["fl_x"], template_json['w'])
     print("hello!!!!")
-    # breakpoint()
+    # breakpoint()+ extension
     # load a single image to get image info.
     for idx, frame in enumerate(template_json["frames"]):
-        cam_name = os.path.join(path, frame["file_path"] + extension)
+        cam_name = os.path.join(path, frame["file_path"])
         image_path = os.path.join(path, cam_name)
         image_name = Path(cam_name).stem
         image = Image.open(image_path)
@@ -267,7 +267,7 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             fovx = focal2fov(contents['fl_x'],contents['w'])
         frames = contents["frames"]
         for idx, frame in enumerate(frames):
-            cam_name = os.path.join(path, frame["file_path"] + extension)
+            cam_name = os.path.join(path, frame["file_path"])
             time = mapper[frame["time"]]
             matrix = np.linalg.inv(np.array(frame["transform_matrix"]))
             R = -np.transpose(matrix[:3,:3])
@@ -285,7 +285,7 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             norm_data = im_data / 255.0
             arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
             image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
-            image = PILtoTorch(image,(800,800))
+            image = PILtoTorch(image,(400,800))
             fovy = focal2fov(fov2focal(fovx, image.shape[1]), image.shape[2])
             FovY = fovy 
             FovX = fovx
@@ -331,11 +331,11 @@ def readNerfSyntheticInfo(path, white_background, eval, extension=".jpg"):
     ply_path = os.path.join(path, "fused.ply")
     if not os.path.exists(ply_path):
         # Since this data set has no colmap data, we start with random points
-        num_pts = 2000
+        num_pts = 4000
         print(f"Generating random point cloud ({num_pts})...")
 
         # We create random points inside the bounds of the synthetic Blender scenes
-        xyz = np.random.random((num_pts, 3)) * 2.6 - 1.3
+        xyz = np.random.random((num_pts, 3)) * 8.6 - 4.3
         shs = np.random.random((num_pts, 3)) / 255.0
         pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
     # storePly(ply_path, xyz, SH2RGB(shs) * 255)
