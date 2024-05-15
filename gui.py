@@ -128,7 +128,7 @@ class MiniCam:
             self.world_view_transform.unsqueeze(0).bmm(self.projection_matrix.unsqueeze(0))).squeeze(0)
         self.camera_center = self.world_view_transform.inverse()[3, :3]
 
-
+ 
 class OrbitCamera:
     def __init__(self, W, H, r=2, fovy=60, near=0.01, far=100):
         self.W = W
@@ -266,28 +266,36 @@ def R_to_q(R,eps=1e-8): # [B,3,3]
                     V = eigvec[:,eigval.argmax()]
                     q[i] = torch.stack([V[3],V[0],V[1],V[2]])
             return q
-        
+
+def hash_cams(cam):
+    return cam.camera_center.sum().item()
+
 class GaussianCameraModel:
 
     def get_camera_stuff(self, cam_list):
         xyzs = []
         qs = []
-      
+        
+        hash_camlist = []
+
         # For each camera in list get the camera position and rotation
         for i, cam in enumerate(cam_list):
-            if i > 10:
-                break
+            # Hash the camera (i.e. avoid displaying cameras with the same R and T)
+            cam_hash = hash_cams(cam)
+            # We do this but summing the camera center points (sure it seems silly but this is realistically fine....(I think)
+            if cam_hash not in hash_camlist:
+                hash_camlist.append(cam_hash)
 
-            for xyz in self.cam_xyzs:
-                T = cam.camera_center + xyz.cpu()
-                w2c = cam.world_view_transform.transpose(0,1)
-                R = w2c[:3, :3].transpose(0,1)
-                T = torch.matmul(R, xyz.unsqueeze(-1).cpu()).squeeze(-1) + cam.camera_center                
-                
-                q = R_to_q(R)
-
-                xyzs.append(T.unsqueeze(0))
-                qs.append(q.unsqueeze(0))
+                for xyz in self.cam_xyzs:
+                    T = cam.camera_center + xyz.cpu()
+                    w2c = cam.world_view_transform.transpose(0,1)
+                    R = w2c[:3, :3].transpose(0,1)
+                    T = torch.matmul(R, xyz.unsqueeze(-1).cpu()).squeeze(-1) + cam.camera_center                
+                    
+                    q = R_to_q(R)
+                    
+                    xyzs.append(T.unsqueeze(0))
+                    qs.append(q.unsqueeze(0))
         
         self.qs = torch.cat(qs, dim=0).cuda()
         self.xyzs = torch.cat(xyzs, dim=0).cuda()
@@ -634,10 +642,19 @@ class GUI:
                     else: # Load stored training_cam
                         self.cam = self.store_orbit
 
-                # Go to next training camera
+                # Go to next training camera The ">>" button
                 def callback_toggle_train_cam_idx(sender):
                     self.view_training_camera_index = (self.view_training_camera_index + 1) % len(self.train_cams)
-                    self.train_cam_buffer = self.train_cams[self.view_training_camera_index]
+                    
+                    notyet_buffer = self.train_cams[self.view_training_camera_index]
+
+                    if self.train_cam_buffer is not None:
+                        while hash_cams(notyet_buffer) == hash_cams(self.train_cam_buffer):
+                            self.view_training_camera_index = (self.view_training_camera_index + 1) % len(self.train_cams)
+                            notyet_buffer = self.train_cams[self.view_training_camera_index]
+
+                    self.train_cam_buffer = notyet_buffer
+
                     dpg.set_value("_log_train_cam_idx", f"Cam Idx: {self.view_training_camera_index}")
 
                 def callback_toggle_show_scene(sender):
